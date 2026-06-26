@@ -15,9 +15,10 @@ interface Entry {
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
 
-export function Leaderboard() {
+export function Leaderboard({ pageSize }: { pageSize?: number }) {
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [error, setError] = useState(false);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -46,18 +47,25 @@ export function Leaderboard() {
     );
   }
 
+  const totalPages = pageSize ? Math.max(1, Math.ceil(entries.length / pageSize)) : 1;
+  const current = Math.min(page, totalPages - 1);
+  const visible = pageSize ? entries.slice(current * pageSize, (current + 1) * pageSize) : entries;
+  const offset = pageSize ? current * pageSize : 0;
+
   return (
-    <ol className="flex flex-col gap-2">
-      {entries.map((e, i) => {
-        const style = tierStyle(e.tier);
-        return (
-          <li
-            key={e.username}
-            className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
-          >
-            <span className="w-8 shrink-0 text-center text-sm font-bold tabular-nums text-zinc-400">
-              {RANK_BADGE[i] ?? i + 1}
-            </span>
+    <>
+      <ol className="flex flex-col gap-2">
+        {visible.map((e, i) => {
+          const rank = offset + i;
+          const style = tierStyle(e.tier);
+          return (
+            <li
+              key={e.username}
+              className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3"
+            >
+              <span className="w-8 shrink-0 text-center text-sm font-bold tabular-nums text-zinc-400">
+                {RANK_BADGE[rank] ?? rank + 1}
+              </span>
             {e.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -88,8 +96,31 @@ export function Leaderboard() {
               {e.final_score.toFixed(2)}
             </span>
           </li>
-        );
-      })}
-    </ol>
+          );
+        })}
+      </ol>
+
+      {pageSize && totalPages > 1 && (
+        <div className="mt-4 flex items-center justify-center gap-4 text-sm">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={current === 0}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-zinc-300 hover:bg-white/10 disabled:opacity-40"
+          >
+            ← 上一页
+          </button>
+          <span className="tabular-nums text-zinc-500">
+            {current + 1} / {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={current >= totalPages - 1}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-zinc-300 hover:bg-white/10 disabled:opacity-40"
+          >
+            下一页 →
+          </button>
+        </div>
+      )}
+    </>
   );
 }

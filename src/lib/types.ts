@@ -77,7 +77,7 @@ export interface RedFlag {
   detail: string;
 }
 
-export type Tier = "夯" | "人上人" | "NPC" | "拉完了";
+export type Tier = "夯" | "顶级" | "人上人" | "NPC" | "拉完了";
 
 export interface Scoring {
   sub_scores: SubScores;

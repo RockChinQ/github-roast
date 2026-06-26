@@ -13,8 +13,6 @@ import {
 import { ShareCard } from "./ShareCard";
 import { Turnstile, turnstileEnabled } from "./Turnstile";
 
-const META_PREFIX = "META ";
-
 interface Display {
   score: number;
   tier: Tier;
@@ -76,39 +74,35 @@ export function Roaster() {
         return;
       }
 
+      // The AI-adjusted score + percentile arrive as a header (base64 JSON), so
+      // the streamed body is pure markdown — no in-band parsing to get wrong.
+      const metaHeader = res.headers.get("X-Roast-Meta");
+      if (metaHeader) {
+        try {
+          const json = new TextDecoder().decode(
+            Uint8Array.from(atob(metaHeader), (c) => c.charCodeAt(0)),
+          );
+          const meta = JSON.parse(json) as RoastMeta;
+          setDisplay({
+            score: meta.final_score,
+            tier: meta.tier,
+            tierLabel: meta.tier_label,
+            delta: meta.delta,
+          });
+          setPercentile(meta.percentile);
+        } catch {
+          /* malformed meta — keep the deterministic display */
+        }
+      }
+
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let acc = "";
-      let bodyStart = -1; // index in `acc` where the markdown report begins
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         acc += decoder.decode(value, { stream: true });
-
-        // The first line is `META {json}` (AI-adjusted score + percentile).
-        if (bodyStart < 0) {
-          if (acc.startsWith(META_PREFIX)) {
-            const nl = acc.indexOf("\n");
-            if (nl >= 0) {
-              try {
-                const meta = JSON.parse(acc.slice(META_PREFIX.length, nl)) as RoastMeta;
-                setDisplay({
-                  score: meta.final_score,
-                  tier: meta.tier,
-                  tierLabel: meta.tier_label,
-                  delta: meta.delta,
-                });
-                setPercentile(meta.percentile);
-              } catch {
-                /* malformed meta — ignore, keep deterministic display */
-              }
-              bodyStart = nl + 1;
-            }
-          } else if (acc.length >= META_PREFIX.length) {
-            bodyStart = 0; // no meta line (e.g. a model that ignored the format)
-          }
-        }
-        if (bodyStart >= 0) setReport(acc.slice(bodyStart));
+        setReport(acc);
       }
     } catch {
       setError("网络中断，毒舌没说完。");

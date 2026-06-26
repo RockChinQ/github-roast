@@ -1,9 +1,23 @@
 import Link from "next/link";
+import { Leaderboard } from "@/components/Leaderboard";
 import { Roaster } from "@/components/Roaster";
 
 export default function Home() {
   return (
     <main className="flex flex-1 flex-col items-center px-5 py-14 sm:py-20">
+      {/* Prominent leaderboard entry, pinned to the very top */}
+      <Link
+        href="/leaderboard"
+        className="group mb-8 inline-flex items-center gap-2 rounded-full border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-orange-500/15 px-4 py-2 text-sm font-medium text-amber-200 shadow-[0_0_30px_-10px_rgba(251,191,36,0.6)] transition hover:border-amber-300/70 hover:from-amber-500/25 hover:to-orange-500/25"
+      >
+        <span className="text-base">🏆</span>
+        名人堂排行榜
+        <span className="rounded-full bg-amber-400/20 px-1.5 py-0.5 text-[10px] font-bold text-amber-100">
+          看谁最强
+        </span>
+        <span className="transition group-hover:translate-x-0.5">→</span>
+      </Link>
+
       <header className="mb-10 flex flex-col items-center text-center">
         <div className="mb-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-zinc-400">
           🔥 公开数据 · 30 秒出分 · 专治刷量号
@@ -18,6 +32,7 @@ export default function Home() {
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2 text-xs">
           {[
             ["🏆 夯", "text-amber-300"],
+            ["🥇 顶级", "text-violet-300"],
             ["💪 人上人", "text-emerald-300"],
             ["🫥 NPC", "text-slate-300"],
             ["💀 拉完了", "text-rose-400"],
@@ -30,15 +45,23 @@ export default function Home() {
             </span>
           ))}
         </div>
-        <Link
-          href="/leaderboard"
-          className="mt-4 text-sm text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
-        >
-          🏆 查看名人堂排行榜 →
-        </Link>
       </header>
 
       <Roaster />
+
+      {/* Embedded leaderboard (paginated) so the board is visible without leaving */}
+      <section className="mt-16 w-full max-w-2xl">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-xl font-black">🏆 名人堂</h2>
+          <Link
+            href="/leaderboard"
+            className="text-xs text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
+          >
+            打开完整榜单 →
+          </Link>
+        </div>
+        <Leaderboard pageSize={10} />
+      </section>
 
       <footer className="mt-20 max-w-xl text-center text-xs leading-relaxed text-zinc-600">
         <p>

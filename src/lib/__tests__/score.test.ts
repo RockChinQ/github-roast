@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isEcosystemImpactPr } from "../github";
-import { logRatio, score } from "../score";
+import { logRatio, score, tierFor } from "../score";
 import type { RawMetrics, RecentPr } from "../types";
 import fixtures from "./score-fixtures.json";
 
@@ -56,6 +56,21 @@ describe("isEcosystemImpactPr (dimension 4 qualification)", () => {
     expect(
       isEcosystemImpactPr(pr({ repo: "torvalds/linux", repo_stars: 200000, trivial: true }), me),
     ).toBe(false);
+  });
+});
+
+describe("tierFor (5 bands incl. 顶级)", () => {
+  it("maps each score band to the right tier", () => {
+    expect(tierFor(95).tier).toBe("夯");
+    expect(tierFor(90).tier).toBe("夯");
+    expect(tierFor(89.99).tier).toBe("顶级");
+    expect(tierFor(80).tier).toBe("顶级");
+    expect(tierFor(79.99).tier).toBe("人上人");
+    expect(tierFor(70).tier).toBe("人上人");
+    expect(tierFor(69.99).tier).toBe("NPC");
+    expect(tierFor(40).tier).toBe("NPC");
+    expect(tierFor(39.99).tier).toBe("拉完了");
+    expect(tierFor(0).tier).toBe("拉完了");
   });
 });
 

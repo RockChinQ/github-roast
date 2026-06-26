@@ -9,8 +9,8 @@ import type { RoastMeta, ScanResult } from "@/lib/types";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Stream sentinel: the first line is `\x1eMETA {json}\n`, the rest is the report. */
-export const META_PREFIX = "META ";
+/** Response header carrying the AI-adjusted score (base64'd JSON; it contains CJK). */
+export const ROAST_META_HEADER = "X-Roast-Meta";
 
 interface ByoKey {
   baseURL?: string;
@@ -108,13 +108,15 @@ export async function POST(req: NextRequest) {
   const counts = await getPercentile(adjusted);
   const percentile = counts ? { beat: beatPercent(counts.below, counts.total), total: counts.total } : null;
 
+  // Metadata travels in a header (base64 JSON — it contains CJK), so the streamed
+  // body is pure markdown and there is no in-band parsing to get wrong.
   const meta: RoastMeta = { final_score: adjusted, tier, tier_label, delta, percentile };
+  const metaHeader = Buffer.from(JSON.stringify(meta), "utf-8").toString("base64");
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
-        controller.enqueue(encoder.encode(META_PREFIX + JSON.stringify(meta) + "\n"));
         if (report) controller.enqueue(encoder.encode(report));
         for await (const chunk of generator) {
           controller.enqueue(encoder.encode(chunk));
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store",
       "X-Accel-Buffering": "no",
+      [ROAST_META_HEADER]: metaHeader,
     },
   });
 }

@@ -19,7 +19,15 @@ export const TIER_STYLES: Record<Tier, TierStyle> = {
     text: "text-amber-300",
     ring: "ring-amber-400/50",
     glow: "rgba(251,191,36,0.35)",
-    blurb: "顶级开发者 · 高价值高信任",
+    blurb: "封神 · 殿堂级标杆",
+  },
+  顶级: {
+    tier: "顶级",
+    emoji: "🥇",
+    text: "text-violet-300",
+    ring: "ring-violet-400/50",
+    glow: "rgba(167,139,250,0.30)",
+    blurb: "顶级开发者 · 一线水准",
   },
   人上人: {
     tier: "人上人",
