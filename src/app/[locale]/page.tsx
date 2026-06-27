@@ -1,9 +1,12 @@
+import { connection } from "next/server";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import { DeveloperCount } from "@/components/DeveloperCount";
-import { Leaderboard } from "@/components/Leaderboard";
+import { HomeLeaderboard } from "@/components/HomeLeaderboard";
 import { Roaster } from "@/components/Roaster";
 import type { TierKey } from "@/lib/tier";
+
+export const dynamic = "force-dynamic";
 
 // Tier pills: emoji + color are language-neutral; the label comes from i18n.
 const TIER_PILLS: { key: TierKey; emoji: string; cls: string }[] = [
@@ -16,6 +19,7 @@ const TIER_PILLS: { key: TierKey; emoji: string; cls: string }[] = [
 
 export default async function Home({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
+  await connection();
   setRequestLocale(locale);
   const t = await getTranslations("home");
   const tt = await getTranslations("tiers");
@@ -88,19 +92,7 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
 
       <Roaster />
 
-      {/* Embedded leaderboard (paginated) so the board is visible without leaving */}
-      <section className="mt-16 w-full max-w-2xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-xl font-black">{t("boardHeading")}</h2>
-          <Link
-            href="/leaderboard"
-            className="text-xs text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
-          >
-            {t("openBoard")}
-          </Link>
-        </div>
-        <Leaderboard pageSize={10} />
-      </section>
+      <HomeLeaderboard pageSize={10} />
 
       <footer className="mt-20 max-w-xl text-center text-xs leading-relaxed text-zinc-600">
         <p>{t.rich("disclaimer1", { b: (c) => <strong>{c}</strong> })}</p>

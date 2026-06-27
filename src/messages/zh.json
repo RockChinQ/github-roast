@@ -43,6 +43,10 @@
     "prev": "← 上一页",
     "next": "下一页 →",
     "collapse": "收起",
+    "scoreView": "评分榜",
+    "heatView": "🔥 热度榜",
+    "heatLabel": "热度",
+    "heatTitle": "被成功查询的次数",
     "viewDetail": "查看 @{username} 的评分详情"
   },
   "detail": {

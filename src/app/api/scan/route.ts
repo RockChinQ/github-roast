@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { recordAccountLookup } from "@/lib/db";
 import { AccountNotFoundError, GitHubRateLimitError, collect } from "@/lib/github";
-import { checkRateLimit, coalesceScan, getCachedScan } from "@/lib/redis";
+import {
+  checkRateLimit,
+  clearCachedLeaderboards,
+  coalesceScan,
+  getCachedScan,
+} from "@/lib/redis";
 import { score } from "@/lib/score";
 import { verifyTurnstile } from "@/lib/turnstile";
 import type { ScanResult } from "@/lib/types";
@@ -22,6 +28,11 @@ function normalizeUsername(input: string): string | null {
 function clientIp(req: NextRequest): string {
   const fwd = req.headers.get("x-forwarded-for");
   return fwd?.split(",")[0]?.trim() || "0.0.0.0";
+}
+
+async function recordSuccessfulLookup(username: string): Promise<void> {
+  await recordAccountLookup(username);
+  await clearCachedLeaderboards();
 }
 
 export async function POST(req: NextRequest) {
@@ -49,6 +60,7 @@ export async function POST(req: NextRequest) {
   // score), so the scan response stays purely the deterministic result.
   const cached = await getCachedScan(username);
   if (cached) {
+    await recordSuccessfulLookup(cached.metrics.username);
     return NextResponse.json({ ...cached, cached: true });
   }
 
@@ -63,6 +75,7 @@ export async function POST(req: NextRequest) {
       const scoring = score(metrics);
       return { metrics, top_repos, recent_prs, flood_pr_titles, scoring };
     });
+    await recordSuccessfulLookup(result.metrics.username);
     return NextResponse.json({ ...result, cached: false });
   } catch (e) {
     if (e instanceof AccountNotFoundError) {

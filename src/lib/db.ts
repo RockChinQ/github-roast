@@ -86,6 +86,14 @@ function ensureSchema(db: Client): Promise<void> {
              scanned_at   INTEGER NOT NULL
            )`,
           `CREATE INDEX IF NOT EXISTS idx_scores_score ON scores(final_score DESC)`,
+          `CREATE TABLE IF NOT EXISTS account_stats (
+             username        TEXT PRIMARY KEY,
+             lookup_count    INTEGER NOT NULL DEFAULT 0,
+             first_lookup_at INTEGER NOT NULL,
+             last_lookup_at  INTEGER NOT NULL
+           )`,
+          `CREATE INDEX IF NOT EXISTS idx_account_stats_heat
+             ON account_stats(lookup_count DESC)`,
           // Logged-in users (GitHub OAuth). Identity only for now; the lowercased
           // `login` lets us later link a user to their own `scores` row + comments.
           `CREATE TABLE IF NOT EXISTS users (
@@ -146,6 +154,175 @@ export interface LeaderboardEntry {
   final_score: number;
   tier: Tier;
   tags: Tags;
+  lookup_count: number;
+}
+
+const PREVIEW_SUB_SCORES: SubScores = {
+  account_maturity: 10,
+  original_project_quality: 18,
+  contribution_quality: 26,
+  ecosystem_impact: 20,
+  community_influence: 8,
+  activity_authenticity: 17,
+};
+
+const PREVIEW_SCANNED_AT = 1_800_000_000_000;
+
+const PREVIEW_ACCOUNTS: AccountDetail[] = [
+  {
+    username: "demo-hot-legend",
+    display_name: "Preview Legend",
+    avatar_url: null,
+    profile_url: null,
+    final_score: 100,
+    tier: "夯",
+    tags: {
+      zh: ["开源狠人", "热度爆表", "满分选手"],
+      en: ["oss beast", "hot profile", "perfect score"],
+    },
+    sub_scores: PREVIEW_SUB_SCORES,
+    roast:
+      "## 本地预览数据\n\n这个账号是开发环境假数据，用来检查榜单热度布局。生产环境不会显示这些示例账号。",
+    roast_en:
+      "## Local preview data\n\nThis is development-only sample data for checking the leaderboard heat layout.",
+    scanned_at: PREVIEW_SCANNED_AT,
+  },
+  {
+    username: "demo-heat-runner",
+    display_name: "Preview Runner",
+    avatar_url: null,
+    profile_url: null,
+    final_score: 96.42,
+    tier: "夯",
+    tags: {
+      zh: ["高频被查", "框架老炮", "PR 稳定"],
+      en: ["frequently roasted", "framework veteran", "steady prs"],
+    },
+    sub_scores: {
+      ...PREVIEW_SUB_SCORES,
+      contribution_quality: 25,
+      activity_authenticity: 16,
+    },
+    roast:
+      "## 本地预览数据\n\n这个账号用于验证热度榜第二名和详情页跳转，不代表真实 GitHub 用户。",
+    roast_en:
+      "## Local preview data\n\nThis sample account validates the second heat rank and detail-page flow.",
+    scanned_at: PREVIEW_SCANNED_AT - 1,
+  },
+  {
+    username: "demo-score-smith",
+    display_name: "Preview Smith",
+    avatar_url: null,
+    profile_url: null,
+    final_score: 94.18,
+    tier: "顶级",
+    tags: {
+      zh: ["稳定输出", "工具匠人", "社区常客"],
+      en: ["steady output", "tool builder", "community regular"],
+    },
+    sub_scores: {
+      ...PREVIEW_SUB_SCORES,
+      ecosystem_impact: 18,
+      community_influence: 7,
+    },
+    roast:
+      "## 本地预览数据\n\n这个账号用于验证热度数字和评分数字在同一个右侧块里上下并列。",
+    roast_en:
+      "## Local preview data\n\nThis sample account validates the stacked score and heat block.",
+    scanned_at: PREVIEW_SCANNED_AT - 2,
+  },
+  {
+    username: "demo-fresh-star",
+    display_name: "Preview Fresh Star",
+    avatar_url: null,
+    profile_url: null,
+    final_score: 88.73,
+    tier: "人上人",
+    tags: {
+      zh: ["新晋热门", "项目很亮", "增长快"],
+      en: ["rising", "bright projects", "fast growth"],
+    },
+    sub_scores: {
+      ...PREVIEW_SUB_SCORES,
+      account_maturity: 7,
+      contribution_quality: 22,
+      ecosystem_impact: 15,
+    },
+    roast:
+      "## 本地预览数据\n\n这个账号用于拉开热度榜分页和排序差异。",
+    roast_en:
+      "## Local preview data\n\nThis sample account creates more variety in the heat ranking.",
+    scanned_at: PREVIEW_SCANNED_AT - 3,
+  },
+];
+
+const PREVIEW_HEAT: Record<string, number> = {
+  "demo-hot-legend": 58,
+  "demo-heat-runner": 612,
+  "demo-score-smith": 241,
+  "demo-fresh-star": 404,
+};
+
+function previewEnabled(): boolean {
+  return process.env.NODE_ENV !== "production" && process.env.GHROAST_PREVIEW_DATA !== "0";
+}
+
+function toLeaderboardEntry(account: AccountDetail): LeaderboardEntry {
+  return {
+    username: account.username,
+    display_name: account.display_name,
+    avatar_url: account.avatar_url,
+    profile_url: account.profile_url,
+    final_score: account.final_score,
+    tier: account.tier,
+    tags: account.tags,
+    lookup_count: PREVIEW_HEAT[account.username] ?? 0,
+  };
+}
+
+function previewLeaderboard(limit: number, minScore: number): LeaderboardEntry[] {
+  if (!previewEnabled()) return [];
+  return PREVIEW_ACCOUNTS.filter((account) => account.final_score >= minScore)
+    .map(toLeaderboardEntry)
+    .sort((a, b) => b.final_score - a.final_score || b.lookup_count - a.lookup_count)
+    .slice(0, limit);
+}
+
+function previewHeatLeaderboard(limit: number, minScore: number): LeaderboardEntry[] {
+  if (!previewEnabled()) return [];
+  return PREVIEW_ACCOUNTS.filter((account) => account.final_score >= minScore)
+    .map(toLeaderboardEntry)
+    .sort((a, b) => b.lookup_count - a.lookup_count || b.final_score - a.final_score)
+    .slice(0, limit);
+}
+
+function previewAccountDetail(username: string): AccountDetail | null {
+  if (!previewEnabled()) return null;
+  return (
+    PREVIEW_ACCOUNTS.find(
+      (account) => account.username.toLowerCase() === username.toLowerCase(),
+    ) ?? null
+  );
+}
+
+/** Count one successful public lookup for a GitHub account. */
+export async function recordAccountLookup(username: string): Promise<void> {
+  const db = getClient();
+  if (!db) return;
+  try {
+    await ensureSchema(db);
+    const now = Date.now();
+    await db.execute({
+      sql: `INSERT INTO account_stats (username, lookup_count, first_lookup_at, last_lookup_at)
+            VALUES (?, 1, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+              lookup_count   = account_stats.lookup_count + 1,
+              last_lookup_at = excluded.last_lookup_at`,
+      args: [username.toLowerCase(), now, now],
+    });
+  } catch (e) {
+    console.error("recordAccountLookup failed:", e);
+  }
 }
 
 /** Upsert an account's latest score. Best-effort; never throws to the caller. */
@@ -213,7 +390,14 @@ export async function getPercentile(
   score: number,
 ): Promise<{ below: number; total: number } | null> {
   const db = getClient();
-  if (!db) return null;
+  if (!db) {
+    const preview = previewLeaderboard(Number.MAX_SAFE_INTEGER, 0);
+    if (preview.length === 0) return null;
+    return {
+      below: preview.filter((entry) => entry.final_score < score).length,
+      total: preview.length,
+    };
+  }
   try {
     await ensureSchema(db);
     const res = await db.execute({
@@ -223,8 +407,24 @@ export async function getPercentile(
       args: [score],
     });
     const row = res.rows[0];
-    if (!row) return null;
-    return { below: Number(row.below), total: Number(row.total) };
+    if (!row) {
+      const preview = previewLeaderboard(Number.MAX_SAFE_INTEGER, 0);
+      return preview.length
+        ? {
+            below: preview.filter((entry) => entry.final_score < score).length,
+            total: preview.length,
+          }
+        : null;
+    }
+    const counts = { below: Number(row.below), total: Number(row.total) };
+    if (counts.total > 0) return counts;
+    const preview = previewLeaderboard(Number.MAX_SAFE_INTEGER, 0);
+    return preview.length
+      ? {
+          below: preview.filter((entry) => entry.final_score < score).length,
+          total: preview.length,
+        }
+      : counts;
   } catch (e) {
     console.error("getPercentile failed:", e);
     return null;
@@ -234,11 +434,17 @@ export async function getPercentile(
 /** Total number of accounts ever evaluated (for the "N developers" counter). */
 export async function getScoreCount(): Promise<number | null> {
   const db = getClient();
-  if (!db) return null;
+  if (!db) {
+    const preview = previewLeaderboard(Number.MAX_SAFE_INTEGER, 0);
+    return preview.length ? preview.length : null;
+  }
   try {
     await ensureSchema(db);
     const res = await db.execute("SELECT COUNT(*) AS n FROM scores");
-    return Number(res.rows[0]?.n ?? 0);
+    const count = Number(res.rows[0]?.n ?? 0);
+    if (count > 0) return count;
+    const preview = previewLeaderboard(Number.MAX_SAFE_INTEGER, 0);
+    return preview.length ? preview.length : count;
   } catch (e) {
     console.error("getScoreCount failed:", e);
     return null;
@@ -251,18 +457,21 @@ export async function getLeaderboard(
   minScore = 60,
 ): Promise<LeaderboardEntry[]> {
   const db = getClient();
-  if (!db) return [];
+  if (!db) return previewLeaderboard(limit, minScore);
   try {
     await ensureSchema(db);
     const res = await db.execute({
-      sql: `SELECT username, display_name, avatar_url, profile_url, final_score, tier, tags
-            FROM scores
-            WHERE hidden = 0 AND final_score >= ?
-            ORDER BY final_score DESC, scanned_at DESC
+      sql: `SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
+                   s.final_score, s.tier, s.tags,
+                   COALESCE(stats.lookup_count, 0) AS lookup_count
+            FROM scores AS s
+            LEFT JOIN account_stats AS stats ON stats.username = s.username
+            WHERE s.hidden = 0 AND s.final_score >= ?
+            ORDER BY s.final_score DESC, s.scanned_at DESC
             LIMIT ?`,
       args: [minScore, limit],
     });
-    return res.rows.map((r) => ({
+    const entries = res.rows.map((r) => ({
       username: String(r.username),
       display_name: r.display_name as string | null,
       avatar_url: r.avatar_url as string | null,
@@ -270,10 +479,49 @@ export async function getLeaderboard(
       final_score: Number(r.final_score),
       tier: String(r.tier) as Tier,
       tags: parseTags(r.tags),
+      lookup_count: Number(r.lookup_count) || 0,
     }));
+    return entries.length > 0 ? entries : previewLeaderboard(limit, minScore);
   } catch (e) {
     console.error("getLeaderboard failed:", e);
-    return [];
+    return previewLeaderboard(limit, minScore);
+  }
+}
+
+/** Public board sorted by successful lookup count, highest heat first. */
+export async function getHeatLeaderboard(
+  limit = 100,
+  minScore = 60,
+): Promise<LeaderboardEntry[]> {
+  const db = getClient();
+  if (!db) return previewHeatLeaderboard(limit, minScore);
+  try {
+    await ensureSchema(db);
+    const res = await db.execute({
+      sql: `SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
+                   s.final_score, s.tier, s.tags,
+                   COALESCE(stats.lookup_count, 0) AS lookup_count
+            FROM scores AS s
+            LEFT JOIN account_stats AS stats ON stats.username = s.username
+            WHERE s.hidden = 0 AND s.final_score >= ?
+            ORDER BY lookup_count DESC, s.final_score DESC, s.scanned_at DESC
+            LIMIT ?`,
+      args: [minScore, limit],
+    });
+    const entries = res.rows.map((r) => ({
+      username: String(r.username),
+      display_name: r.display_name as string | null,
+      avatar_url: r.avatar_url as string | null,
+      profile_url: r.profile_url as string | null,
+      final_score: Number(r.final_score),
+      tier: String(r.tier) as Tier,
+      tags: parseTags(r.tags),
+      lookup_count: Number(r.lookup_count) || 0,
+    }));
+    return entries.length > 0 ? entries : previewHeatLeaderboard(limit, minScore);
+  } catch (e) {
+    console.error("getHeatLeaderboard failed:", e);
+    return previewHeatLeaderboard(limit, minScore);
   }
 }
 
@@ -303,7 +551,17 @@ export interface ScoreBrief {
 /** Minimal score lookup for the SVG badge — avoids fetching the heavy roast text. */
 export async function getScoreBrief(username: string): Promise<ScoreBrief | null> {
   const db = getClient();
-  if (!db) return null;
+  if (!db) {
+    const preview = previewAccountDetail(username);
+    return preview
+      ? {
+          username: preview.username,
+          display_name: preview.display_name,
+          final_score: preview.final_score,
+          tier: preview.tier,
+        }
+      : null;
+  }
   try {
     await ensureSchema(db);
     const res = await db.execute({
@@ -314,7 +572,17 @@ export async function getScoreBrief(username: string): Promise<ScoreBrief | null
       args: [username.toLowerCase()],
     });
     const r = res.rows[0];
-    if (!r) return null;
+    if (!r) {
+      const preview = previewAccountDetail(username);
+      return preview
+        ? {
+            username: preview.username,
+            display_name: preview.display_name,
+            final_score: preview.final_score,
+            tier: preview.tier,
+          }
+        : null;
+    }
     return {
       username: String(r.username),
       display_name: r.display_name as string | null,
@@ -330,7 +598,7 @@ export async function getScoreBrief(username: string): Promise<ScoreBrief | null
 /** Full persisted record for one account's detail page (null if absent/hidden). */
 export async function getAccountDetail(username: string): Promise<AccountDetail | null> {
   const db = getClient();
-  if (!db) return null;
+  if (!db) return previewAccountDetail(username);
   try {
     await ensureSchema(db);
     const res = await db.execute({
@@ -342,7 +610,7 @@ export async function getAccountDetail(username: string): Promise<AccountDetail 
       args: [username.toLowerCase()],
     });
     const r = res.rows[0];
-    if (!r) return null;
+    if (!r) return previewAccountDetail(username);
     return {
       username: String(r.username),
       display_name: r.display_name as string | null,
@@ -358,7 +626,7 @@ export async function getAccountDetail(username: string): Promise<AccountDetail 
     };
   } catch (e) {
     console.error("getAccountDetail failed:", e);
-    return null;
+    return previewAccountDetail(username);
   }
 }
 
@@ -381,16 +649,23 @@ export async function getSimilarAccounts(
   limit = 6,
 ): Promise<LeaderboardEntry[]> {
   const db = getClient();
-  if (!db) return [];
+  if (!db) {
+    return previewLeaderboard(Number.MAX_SAFE_INTEGER, 0)
+      .filter((entry) => entry.username.toLowerCase() !== username.toLowerCase())
+      .slice(0, limit);
+  }
   try {
     await ensureSchema(db);
     const res = await db.execute({
-      sql: `SELECT username, display_name, avatar_url, profile_url, final_score, tier, tags, sub_scores
-            FROM scores
-            WHERE hidden = 0
-              AND username != ?
-              AND final_score BETWEEN ? AND ?
-            ORDER BY final_score DESC
+      sql: `SELECT s.username, s.display_name, s.avatar_url, s.profile_url,
+                   s.final_score, s.tier, s.tags, s.sub_scores,
+                   COALESCE(stats.lookup_count, 0) AS lookup_count
+            FROM scores AS s
+            LEFT JOIN account_stats AS stats ON stats.username = s.username
+            WHERE s.hidden = 0
+              AND s.username != ?
+              AND s.final_score BETWEEN ? AND ?
+            ORDER BY s.final_score DESC
             LIMIT ?`,
       args: [
         username.toLowerCase(),
@@ -408,12 +683,27 @@ export async function getSimilarAccounts(
       tier: String(r.tier) as Tier,
       tags: parseTags(r.tags),
       sub_scores: parseSubScores(r.sub_scores),
+      lookup_count: Number(r.lookup_count) || 0,
     }));
-    // Rank by profile distance, then drop sub_scores to match LeaderboardEntry.
-    return rankSimilar(subScores, candidates, limit).map(({ sub_scores: _omit, ...e }) => e);
+    const ranked = rankSimilar(subScores, candidates, limit).map((e) => ({
+      username: e.username,
+      display_name: e.display_name,
+      avatar_url: e.avatar_url,
+      profile_url: e.profile_url,
+      final_score: e.final_score,
+      tier: e.tier,
+      tags: e.tags,
+      lookup_count: e.lookup_count,
+    }));
+    if (ranked.length > 0) return ranked;
+    return previewLeaderboard(Number.MAX_SAFE_INTEGER, 0)
+      .filter((entry) => entry.username.toLowerCase() !== username.toLowerCase())
+      .slice(0, limit);
   } catch (e) {
     console.error("getSimilarAccounts failed:", e);
-    return [];
+    return previewLeaderboard(Number.MAX_SAFE_INTEGER, 0)
+      .filter((entry) => entry.username.toLowerCase() !== username.toLowerCase())
+      .slice(0, limit);
   }
 }
 

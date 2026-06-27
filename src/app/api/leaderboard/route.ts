@@ -1,6 +1,10 @@
-import { NextResponse } from "next/server";
-import { getLeaderboard, type LeaderboardEntry } from "@/lib/db";
-import { getCachedLeaderboard, setCachedLeaderboard } from "@/lib/redis";
+import { NextRequest, NextResponse } from "next/server";
+import { getHeatLeaderboard, getLeaderboard, type LeaderboardEntry } from "@/lib/db";
+import {
+  getCachedLeaderboard,
+  setCachedLeaderboard,
+  type LeaderboardCacheView,
+} from "@/lib/redis";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,19 +16,25 @@ const LIMIT = 500;
 // stale-while-revalidate keeps it instant while one background request refreshes.
 const CDN_CACHE = "public, s-maxage=120, stale-while-revalidate=600";
 
-export async function GET() {
-  const cached = await getCachedLeaderboard();
+function leaderboardView(req: NextRequest): LeaderboardCacheView {
+  return req.nextUrl.searchParams.get("view") === "heat" ? "heat" : "score";
+}
+
+export async function GET(req: NextRequest) {
+  const view = leaderboardView(req);
+  const cached = await getCachedLeaderboard(view);
   if (cached) {
     return NextResponse.json(
-      { entries: cached, cached: true },
+      { entries: cached, cached: true, view },
       { headers: { "Cache-Control": CDN_CACHE } },
     );
   }
 
-  const entries: LeaderboardEntry[] = await getLeaderboard(LIMIT);
-  await setCachedLeaderboard(entries);
+  const entries: LeaderboardEntry[] =
+    view === "heat" ? await getHeatLeaderboard(LIMIT) : await getLeaderboard(LIMIT);
+  await setCachedLeaderboard(entries, view);
   return NextResponse.json(
-    { entries, cached: false },
+    { entries, cached: false, view },
     { headers: { "Cache-Control": CDN_CACHE } },
   );
 }
