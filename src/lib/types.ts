@@ -107,6 +107,12 @@ export interface ScanResult {
   scoring: Scoring;
 }
 
+/** Fun, viral tags the AI assigns to an account (3-5 each), for sharing. */
+export interface Tags {
+  zh: string[];
+  en: string[];
+}
+
 /**
  * Metadata the roast stream emits on its first line, after the AI applies its
  * bounded ±10 qualitative adjustment. `final_score` is the deterministic score
@@ -118,4 +124,5 @@ export interface RoastMeta {
   tier_label: string;
   delta: number;
   percentile: { beat: number | null; total: number } | null;
+  tags: Tags;
 }

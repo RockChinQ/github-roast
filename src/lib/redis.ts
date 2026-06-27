@@ -155,10 +155,11 @@ export async function checkRoastRateLimit(ip: string): Promise<{ success: boolea
   }
 }
 
-/** Cached roast: the LLM-written report + its ±delta, keyed by username (24h). */
+/** Cached roast: the LLM-written report + its ±delta + tags, keyed by username (24h). */
 export interface CachedRoast {
   report: string;
   delta: number;
+  tags: import("./types").Tags;
 }
 
 const ROAST_TTL_SECONDS = 60 * 60 * 24;

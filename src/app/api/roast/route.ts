@@ -10,7 +10,7 @@ import {
   setCachedRoast,
 } from "@/lib/redis";
 import { clampScore, tierFor } from "@/lib/score";
-import type { RoastMeta, ScanResult } from "@/lib/types";
+import type { RoastMeta, ScanResult, Tags } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,6 +52,37 @@ function parseDelta(head: string): number {
   return Math.max(-10, Math.min(10, n));
 }
 
+/** Parse the `@@TAGS zh=...|en=...@@` control line into clean, capped tag lists. */
+function parseTags(head: string): Tags {
+  const m = head.match(/@@TAGS\s*([^@]*?)@@/);
+  if (!m) return { zh: [], en: [] };
+  const body = m[1];
+  const grab = (key: string): string[] => {
+    const mm = body.match(new RegExp(`${key}=([^|@]+)`));
+    if (!mm) return [];
+    return mm[1].split(/[,，、]/).map((t) => t.trim());
+  };
+  const clean = (arr: string[], maxLen: number): string[] =>
+    Array.from(
+      new Set(
+        arr
+          .map((t) => t.replace(/[#@]/g, "").trim())
+          .filter(Boolean)
+          .map((t) => t.slice(0, maxLen)),
+      ),
+    ).slice(0, 5);
+  return { zh: clean(grab("zh"), 10), en: clean(grab("en"), 24) };
+}
+
+/** Strip the leading control lines so they never reach the rendered report. */
+function extractReport(head: string): string {
+  const lines = head.split("\n");
+  const idx = lines.findIndex((l) => /^\s*##\s/.test(l));
+  if (idx >= 0) return lines.slice(idx).join("\n");
+  // No heading found (model ignored format) — just drop any control lines.
+  return lines.filter((l) => !/@@(ADJUST|TAGS)/.test(l)).join("\n").replace(/^\n+/, "");
+}
+
 /** Bound a client-supplied scan so a fabricated payload can't bloat the prompt. */
 function sanitizeScan(scan: ScanResult): ScanResult {
   return {
@@ -90,6 +121,7 @@ function roastResponse(body: ReadableStream<Uint8Array> | string, meta: RoastMet
 async function computeMeta(
   scan: ScanResult,
   delta: number,
+  tags: Tags,
   record: boolean,
 ): Promise<RoastMeta> {
   const adjusted = clampScore(scan.scoring.final_score + delta);
@@ -102,6 +134,7 @@ async function computeMeta(
       profile_url: scan.metrics.profile_url,
       final_score: adjusted,
       tier,
+      tags,
       scanned_at: Date.now(),
     });
   }
@@ -109,7 +142,7 @@ async function computeMeta(
   const percentile = counts
     ? { beat: beatPercent(counts.below, counts.total), total: counts.total }
     : null;
-  return { final_score: adjusted, tier, tier_label, delta, percentile };
+  return { final_score: adjusted, tier, tier_label, delta, percentile, tags };
 }
 
 export async function POST(req: NextRequest) {
@@ -145,7 +178,12 @@ export async function POST(req: NextRequest) {
   if (isDefault) {
     const cachedRoast = await getCachedRoast(username);
     if (cachedRoast) {
-      const meta = await computeMeta(scan, cachedRoast.delta, false);
+      const meta = await computeMeta(
+        scan,
+        cachedRoast.delta,
+        cachedRoast.tags ?? { zh: [], en: [] },
+        false,
+      );
       return roastResponse(cachedRoast.report, meta);
     }
     const { success } = await checkRoastRateLimit(clientIp(req));
@@ -159,11 +197,12 @@ export async function POST(req: NextRequest) {
 
   const generator = chatStream(config, buildRoastMessages(scan));
 
-  // Read the leading control line (`@@ADJUST n@@`) before streaming the report.
-  // Pulling tokens up-front also surfaces quota/auth failures as a JSON status.
+  // Read the leading control lines (`@@ADJUST@@` + `@@TAGS@@`) before streaming —
+  // i.e. up to the report heading. Pulling tokens up-front also surfaces
+  // quota/auth failures as a JSON status code.
   let head = "";
   try {
-    while (!head.includes("\n") && head.length < 2000) {
+    while (!/(^|\n)\s*##\s/.test(head) && head.length < 1200) {
       const { done, value } = await generator.next();
       if (done) break;
       head += value;
@@ -180,13 +219,10 @@ export async function POST(req: NextRequest) {
   }
 
   const delta = parseDelta(head);
-  let report = head;
-  const newlineAt = head.indexOf("\n");
-  if (/@@ADJUST/.test(head) && newlineAt >= 0) {
-    report = head.slice(newlineAt + 1);
-  }
+  const tags = parseTags(head);
+  const report = extractReport(head);
 
-  const meta = await computeMeta(scan, delta, isDefault);
+  const meta = await computeMeta(scan, delta, tags, isDefault);
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -199,7 +235,7 @@ export async function POST(req: NextRequest) {
           controller.enqueue(encoder.encode(chunk));
         }
         // Cache the finished roast so repeat views don't re-spend LLM credit.
-        if (isDefault) await setCachedRoast(username, { report: full, delta });
+        if (isDefault) await setCachedRoast(username, { report: full, delta, tags });
       } catch (e) {
         console.error("roast stream error:", e);
       } finally {

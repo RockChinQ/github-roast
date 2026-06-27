@@ -11,6 +11,7 @@ interface Entry {
   profile_url: string | null;
   final_score: number;
   tier: Tier;
+  tags?: { zh: string[]; en: string[] };
 }
 
 const RANK_BADGE = ["🥇", "🥈", "🥉"];
@@ -85,9 +86,23 @@ export function Leaderboard({ pageSize }: { pageSize?: number }) {
               >
                 @{e.username}
               </a>
-              {e.display_name && (
-                <span className="block truncate text-xs text-zinc-500">{e.display_name}</span>
-              )}
+              {(() => {
+                const t = [...(e.tags?.zh ?? []), ...(e.tags?.en ?? [])].slice(0, 2);
+                return t.length ? (
+                  <span className="flex flex-wrap gap-1 pt-0.5">
+                    {t.map((tag, i) => (
+                      <span
+                        key={`${tag}-${i}`}
+                        className="rounded-full bg-orange-500/10 px-1.5 py-px text-[10px] text-orange-200/90"
+                      >
+                        #{tag}
+                      </span>
+                    ))}
+                  </span>
+                ) : e.display_name ? (
+                  <span className="block truncate text-xs text-zinc-500">{e.display_name}</span>
+                ) : null;
+              })()}
             </div>
             <span className={`shrink-0 text-xs font-medium ${style.text}`}>
               {style.emoji} {e.tier}

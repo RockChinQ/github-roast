@@ -9,7 +9,19 @@
  */
 
 import { Client, createClient } from "@libsql/client";
-import type { Tier } from "./types";
+import type { Tags, Tier } from "./types";
+
+const EMPTY_TAGS: Tags = { zh: [], en: [] };
+
+function parseTags(raw: unknown): Tags {
+  if (typeof raw !== "string" || !raw) return EMPTY_TAGS;
+  try {
+    const t = JSON.parse(raw) as Partial<Tags>;
+    return { zh: Array.isArray(t.zh) ? t.zh : [], en: Array.isArray(t.en) ? t.en : [] };
+  } catch {
+    return EMPTY_TAGS;
+  }
+}
 
 let client: Client | null = null;
 let schemaReady: Promise<void> | null = null;
@@ -38,6 +50,7 @@ function ensureSchema(db: Client): Promise<void> {
              profile_url  TEXT,
              final_score  REAL NOT NULL,
              tier         TEXT NOT NULL,
+             tags         TEXT,
              hidden       INTEGER NOT NULL DEFAULT 0,
              scanned_at   INTEGER NOT NULL
            )`,
@@ -45,6 +58,12 @@ function ensureSchema(db: Client): Promise<void> {
         ],
         "write",
       );
+      // Migration for tables created before the tags column existed.
+      try {
+        await db.execute("ALTER TABLE scores ADD COLUMN tags TEXT");
+      } catch {
+        // column already exists — ignore
+      }
     })().catch((e) => {
       schemaReady = null; // allow retry on next call
       throw e;
@@ -60,6 +79,7 @@ export interface ScoreEntry {
   profile_url: string | null;
   final_score: number;
   tier: Tier;
+  tags: Tags;
   scanned_at: number;
 }
 
@@ -70,6 +90,7 @@ export interface LeaderboardEntry {
   profile_url: string | null;
   final_score: number;
   tier: Tier;
+  tags: Tags;
 }
 
 /** Upsert an account's latest score. Best-effort; never throws to the caller. */
@@ -80,14 +101,15 @@ export async function recordScore(entry: ScoreEntry): Promise<void> {
     await ensureSchema(db);
     await db.execute({
       sql: `INSERT INTO scores
-              (username, display_name, avatar_url, profile_url, final_score, tier, scanned_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+              (username, display_name, avatar_url, profile_url, final_score, tier, tags, scanned_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(username) DO UPDATE SET
               display_name = excluded.display_name,
               avatar_url   = excluded.avatar_url,
               profile_url  = excluded.profile_url,
               final_score  = excluded.final_score,
               tier         = excluded.tier,
+              tags         = excluded.tags,
               scanned_at   = excluded.scanned_at`,
       args: [
         entry.username.toLowerCase(),
@@ -96,6 +118,7 @@ export async function recordScore(entry: ScoreEntry): Promise<void> {
         entry.profile_url,
         entry.final_score,
         entry.tier,
+        JSON.stringify(entry.tags ?? EMPTY_TAGS),
         entry.scanned_at,
       ],
     });
@@ -151,7 +174,7 @@ export async function getLeaderboard(
   try {
     await ensureSchema(db);
     const res = await db.execute({
-      sql: `SELECT username, display_name, avatar_url, profile_url, final_score, tier
+      sql: `SELECT username, display_name, avatar_url, profile_url, final_score, tier, tags
             FROM scores
             WHERE hidden = 0 AND final_score >= ?
             ORDER BY final_score DESC, scanned_at DESC
@@ -165,6 +188,7 @@ export async function getLeaderboard(
       profile_url: r.profile_url as string | null,
       final_score: Number(r.final_score),
       tier: String(r.tier) as Tier,
+      tags: parseTags(r.tags),
     }));
   } catch (e) {
     console.error("getLeaderboard failed:", e);

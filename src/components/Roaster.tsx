@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { tierStyle } from "@/lib/tier";
-import type { RoastMeta, ScanResult, Tier } from "@/lib/types";
+import type { RoastMeta, ScanResult, Tags, Tier } from "@/lib/types";
 import {
   ByoKeyConfig,
   ByoKeyModal,
@@ -18,6 +18,19 @@ interface Display {
   tier: Tier;
   tierLabel: string;
   delta: number;
+}
+
+// The LLM report ends with a "🔥 **毒舌点评**: <one-liner>" line. Split it so the
+// card shows only that savage one-liner while the scoring table/dimensions render
+// separately below (above the leaderboard). While streaming, the marker may not
+// have arrived yet — then the whole thing is still "body" and roast stays empty.
+function splitReport(md: string): { body: string; roast: string } {
+  const m = md.match(/🔥\s*\*{0,2}\s*毒舌点评\s*\*{0,2}\s*[：:]/);
+  if (!m || m.index === undefined) return { body: md.trim(), roast: "" };
+  return {
+    body: md.slice(0, m.index).trim(),
+    roast: md.slice(m.index + m[0].length).trim(),
+  };
 }
 
 const SCAN_ERRORS: Record<string, string> = {
@@ -44,6 +57,7 @@ export function Roaster() {
     null,
   );
   const [display, setDisplay] = useState<Display | null>(null);
+  const [tags, setTags] = useState<Tags | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const runRoast = useCallback(async (scanResult: ScanResult) => {
@@ -92,6 +106,7 @@ export function Roaster() {
             delta: meta.delta,
           });
           setPercentile(meta.percentile);
+          if (meta.tags && (meta.tags.zh.length || meta.tags.en.length)) setTags(meta.tags);
         } catch {
           /* malformed meta — keep the deterministic display */
         }
@@ -126,6 +141,7 @@ export function Roaster() {
       setReport("");
       setPercentile(null);
       setDisplay(null);
+      setTags(null);
       setScanning(true);
       try {
         const res = await fetch("/api/scan", {
@@ -181,6 +197,7 @@ export function Roaster() {
   };
 
   const style = display ? tierStyle(display.tier) : null;
+  const { body: reportBody, roast: roastLine } = splitReport(report);
   const cardRef = useRef<HTMLDivElement>(null);
   const [savingImg, setSavingImg] = useState(false);
 
@@ -268,15 +285,17 @@ export function Roaster() {
               {style.emoji} {display.tier}
             </div>
 
-            {/* Roast report */}
-            <div className="mt-4 w-full rounded-xl border border-white/10 bg-white/[0.02] p-4 text-left">
+            {/* Savage one-liner only — full scoring report renders below the card */}
+            <div className="mt-4 w-full rounded-xl border border-orange-500/20 bg-orange-500/[0.04] p-4 text-left">
               <div className="mb-2 text-base font-bold text-orange-400">🔥 毒舌点评</div>
-              {report ? (
-                <div
-                  className={`report text-sm text-zinc-200 ${roasting ? "caret" : ""}`}
+              {roastLine ? (
+                <p
+                  className={`text-sm leading-relaxed text-zinc-100 ${
+                    roasting && !reportBody ? "caret" : ""
+                  }`}
                 >
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{report}</ReactMarkdown>
-                </div>
+                  {roastLine}
+                </p>
               ) : (
                 <div className="flex flex-col items-center gap-3 py-3 text-center">
                   <div className="flex gap-1.5">
@@ -287,6 +306,19 @@ export function Roaster() {
                   <div className="text-sm text-zinc-400">
                     {roasting ? "AI 正在憋一段毒舌点评，马上端上来…" : "准备生成点评"}
                   </div>
+                </div>
+              )}
+
+              {tags && (tags.zh.length > 0 || tags.en.length > 0) && (
+                <div className="mt-3 flex flex-wrap gap-1.5 border-t border-white/10 pt-3">
+                  {[...tags.zh, ...tags.en].map((t, i) => (
+                    <span
+                      key={`${t}-${i}`}
+                      className="rounded-full border border-orange-400/30 bg-orange-500/10 px-2.5 py-0.5 text-xs font-medium text-orange-200"
+                    >
+                      #{t}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
@@ -317,6 +349,20 @@ export function Roaster() {
               </button>
             </div>
           </div>
+
+          {/* Full scoring report (dimensions table, risk flags, suggestion) —
+              outside the card, above the leaderboard */}
+          {reportBody && (
+            <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:p-7">
+              <div
+                className={`report text-[0.95rem] text-zinc-200 ${
+                  roasting && !roastLine ? "caret" : ""
+                }`}
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{reportBody}</ReactMarkdown>
+              </div>
+            </div>
+          )}
 
           {scan.metrics.days_since_last_activity === null && (
             <p className="mt-3 text-center text-xs text-zinc-600">
