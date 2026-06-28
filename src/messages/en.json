@@ -35,6 +35,8 @@
     "detailNoMode": "This tone hasn't been generated yet — <a>roast it again</a> to create it.",
     "boardTop": "🏆 Hall of Fame",
     "boardBottom": "💧 Filler board",
+    "boardPill": "Paper board · best / worst",
+    "boardOpen": "Open full board →",
     "boardEmpty": "🧮 No papers on the board yet — go roast one…",
     "teaserPending": "⏳ Not roasted yet — be the first",
     "teaserCta": "🔥 Roast this paper now →",

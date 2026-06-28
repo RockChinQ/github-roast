@@ -35,6 +35,8 @@
     "detailNoMode": "这个语气还没生成 —— <a>去重新评测一次</a> 即可生成。",
     "boardTop": "🏆 神作榜",
     "boardBottom": "💧 灌水榜",
+    "boardPill": "论文榜 · 神作 / 灌水",
+    "boardOpen": "查看完整榜单 →",
     "boardEmpty": "🧮 还没有论文上榜,快去评一篇…",
     "teaserPending": "⏳ 这篇还没被锐评 —— 你来当第一个",
     "teaserCta": "🔥 一键锐评这篇论文 →",
