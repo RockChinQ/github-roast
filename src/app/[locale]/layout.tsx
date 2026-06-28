@@ -7,6 +7,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { routing } from "@/i18n/routing";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { PoweredByLobeHub } from "@/components/Sponsor";
+import { JsonLd, websiteJsonLd } from "@/components/JsonLd";
+import { SITE_URL } from "@/lib/site";
 import "../globals.css";
 
 const geistSans = Geist({
@@ -34,7 +36,7 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "meta" });
   return {
-    metadataBase: new URL("https://githubroast.dev"),
+    metadataBase: new URL(SITE_URL),
     title: t("title"),
     description: t("description"),
     alternates: {
@@ -67,6 +69,7 @@ export default async function LocaleLayout({
   // Enable static rendering for this locale.
   setRequestLocale(locale);
   const tRepo = await getTranslations("repoLink");
+  const tMeta = await getTranslations({ locale, namespace: "meta" });
 
   return (
     <html
@@ -74,6 +77,7 @@ export default async function LocaleLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <JsonLd data={websiteJsonLd({ name: tMeta("siteName"), description: tMeta("description") })} />
         <NextIntlClientProvider>
           {/* The GitHub login area (SiteHeader) belongs to the separate auth
               feature; this i18n layout only owns the language switcher so it
