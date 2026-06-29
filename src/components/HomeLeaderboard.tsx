@@ -22,7 +22,6 @@ export async function HomeLeaderboard({ pageSize = 10 }: { pageSize?: number }) 
     heatTitle: tBoard("heatTitle"),
   };
   const labels: HomeLeaderboardLabels = {
-    heading: tHome("boardHeading"),
     openBoard: tHome("openBoard"),
     trendView: tBoard("trendView"),
     scoreView: tBoard("scoreView"),

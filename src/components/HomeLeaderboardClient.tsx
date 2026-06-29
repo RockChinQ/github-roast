@@ -10,7 +10,6 @@ import {
 } from "./LeaderboardClient";
 
 export interface HomeLeaderboardLabels {
-  heading: string;
   openBoard: string;
   trendView: string;
   scoreView: string;
@@ -54,9 +53,6 @@ export function HomeLeaderboardClient({
 
   return (
     <section className="mt-16 w-full max-w-4xl">
-      <h2 className="mb-4 text-center text-2xl font-black leading-tight text-zinc-100 sm:text-3xl">
-        {labels.heading}
-      </h2>
       <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="-mx-1 flex max-w-full snap-x items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:gap-x-5 sm:overflow-visible sm:px-0 sm:pb-0">
