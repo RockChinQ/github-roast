@@ -15,7 +15,7 @@ import {
   ROAST_CACHE_VERSION,
   SCORE_CACHE_VERSION,
 } from "./cache-version";
-import type { LeaderboardEntry } from "./db";
+import type { LeaderboardEntry, LeaderboardWindow } from "./db";
 import type { Lang } from "./lang";
 import type { ProfileReactionCounts } from "./reactions";
 import type { ScanResult } from "./types";
@@ -302,16 +302,23 @@ export async function setCachedStats(total: number): Promise<void> {
 
 export type LeaderboardCacheView = "trending" | "score" | "heat" | "progress";
 
-const leaderboardKey = (view: LeaderboardCacheView) => `leaderboard:${view}`;
+const LEADERBOARD_VIEWS: LeaderboardCacheView[] = ["trending", "score", "heat", "progress"];
+const LEADERBOARD_WINDOWS: LeaderboardWindow[] = ["24h", "7d", "30d", "all"];
+
+// One Redis entry per (view, window) pair — 4 × 4 = 16 keys, each a slow-moving
+// 500-row payload. A hit skips the triple-LEFT-JOIN DB read entirely.
+const leaderboardKey = (view: LeaderboardCacheView, window: LeaderboardWindow) =>
+  `leaderboard:${view}:${window}`;
 const LEADERBOARD_TTL_SECONDS = 300; // 5 min — board moves slowly; fewer DB reads
 
 export async function getCachedLeaderboard(
   view: LeaderboardCacheView = "trending",
+  window: LeaderboardWindow = "all",
 ): Promise<LeaderboardEntry[] | null> {
   const r = getRedis();
   if (!r) return null;
   try {
-    return (await r.get<LeaderboardEntry[]>(leaderboardKey(view))) ?? null;
+    return (await r.get<LeaderboardEntry[]>(leaderboardKey(view, window))) ?? null;
   } catch {
     return null;
   }
@@ -320,11 +327,12 @@ export async function getCachedLeaderboard(
 export async function setCachedLeaderboard(
   entries: LeaderboardEntry[],
   view: LeaderboardCacheView = "trending",
+  window: LeaderboardWindow = "all",
 ): Promise<void> {
   const r = getRedis();
   if (!r) return;
   try {
-    await r.set(leaderboardKey(view), entries, { ex: LEADERBOARD_TTL_SECONDS });
+    await r.set(leaderboardKey(view, window), entries, { ex: LEADERBOARD_TTL_SECONDS });
   } catch {
     // best-effort
   }
@@ -335,10 +343,9 @@ export async function clearCachedLeaderboards(): Promise<void> {
   if (!r) return;
   try {
     await r.del(
-      leaderboardKey("trending"),
-      leaderboardKey("score"),
-      leaderboardKey("heat"),
-      leaderboardKey("progress"),
+      ...LEADERBOARD_VIEWS.flatMap((view) =>
+        LEADERBOARD_WINDOWS.map((window) => leaderboardKey(view, window)),
+      ),
     );
   } catch {
     // best-effort

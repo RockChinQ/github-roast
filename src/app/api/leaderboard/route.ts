@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { LeaderboardWindow } from "@/lib/db";
 import { getLeaderboardCached } from "@/lib/leaderboard";
 import type { LeaderboardCacheView } from "@/lib/redis";
 
@@ -18,11 +19,20 @@ function leaderboardView(req: NextRequest): LeaderboardCacheView {
   return "trending";
 }
 
+function leaderboardWindow(req: NextRequest): LeaderboardWindow {
+  const window = req.nextUrl.searchParams.get("window");
+  if (window === "24h") return "24h";
+  if (window === "7d") return "7d";
+  if (window === "30d") return "30d";
+  return "all";
+}
+
 export async function GET(req: NextRequest) {
   const view = leaderboardView(req);
-  const { entries, cached } = await getLeaderboardCached(view);
+  const window = leaderboardWindow(req);
+  const { entries, cached } = await getLeaderboardCached(view, window);
   return NextResponse.json(
-    { entries, cached, view },
+    { entries, cached, view, window },
     { headers: { "Cache-Control": CDN_CACHE } },
   );
 }
