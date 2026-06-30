@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocale, useTranslations } from "next-intl";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useRef, useState } from "react";
 import { Link } from "@/i18n/navigation";
 import { TIER_KEY, tierStyle } from "@/lib/tier";
 import type { Tier } from "@/lib/types";
@@ -155,6 +155,7 @@ export function LeaderboardClient({
 }) {
   const locale = useLocale();
   const tTier = useTranslations("tiers");
+  const listRef = useRef<HTMLOListElement>(null);
   const [page, setPage] = useState(0);
   const [pageInput, setPageInput] = useState({ page: 0, value: "1" });
   const entries =
@@ -170,16 +171,29 @@ export function LeaderboardClient({
   const visible = pageSize ? entries.slice(current * pageSize, (current + 1) * pageSize) : entries;
   const offset = pageSize ? current * pageSize : 0;
 
-  function goToPage(nextPage: number) {
-    const target = resolveLeaderboardPageInput(String(nextPage + 1), current, totalPages);
+  function scrollToListTop() {
+    const list = listRef.current;
+    if (!list) return;
+    const top = list.getBoundingClientRect().top + window.scrollY;
+    // Only pull the viewport up when the list head is above the fold; never push
+    // the user further down a page they're already at the top of.
+    if (window.scrollY > top) {
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+  }
+
+  function changePage(target: number) {
     setPage(target);
     setPageInput({ page: target, value: String(target + 1) });
+    scrollToListTop();
+  }
+
+  function goToPage(nextPage: number) {
+    changePage(resolveLeaderboardPageInput(String(nextPage + 1), current, totalPages));
   }
 
   function commitPageInput() {
-    const target = resolveLeaderboardPageInput(currentPageInput, current, totalPages);
-    setPage(target);
-    setPageInput({ page: target, value: String(target + 1) });
+    changePage(resolveLeaderboardPageInput(currentPageInput, current, totalPages));
   }
 
   function handlePageSubmit(event: FormEvent<HTMLFormElement>) {
@@ -191,7 +205,7 @@ export function LeaderboardClient({
 
   return (
     <>
-      <ol className="flex flex-col gap-2">
+      <ol ref={listRef} className="flex flex-col gap-2">
         {visible.map((e, i) => {
           const rank = offset + i;
           const style = tierStyle(e.tier);
