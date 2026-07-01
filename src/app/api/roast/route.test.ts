@@ -273,6 +273,10 @@ describe("roast API persistence", () => {
     );
 
     expect(response.status).toBe(200);
+    // The judge/writer passes run inside the streamed response's start()
+    // callback, so buildRoastMessages is only invoked once the body is
+    // consumed — drain it before inspecting the mock.
+    await response.text();
     const passedScan = mocks.buildRoastMessages.mock.calls[0]![0];
     expect(passedScan.top_repos[0].readme).toBeUndefined();
     expect(passedScan.top_repos[0].readme_excerpt).toBe("Fallback summary");
