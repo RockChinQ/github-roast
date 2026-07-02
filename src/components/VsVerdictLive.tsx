@@ -39,8 +39,12 @@ export function VsVerdictLive({
 
   useEffect(() => {
     if (!autoGenerate || firedRef.current) return;
+    // Fire exactly once. We deliberately do NOT abort on cleanup: the LLM call
+    // takes ~30-60s, and React Strict Mode's setup→cleanup→setup in dev would
+    // otherwise abort the only request (the re-run is skipped by firedRef),
+    // leaving it stuck "generating". A late setState after a real unmount is a
+    // harmless no-op in React 18.
     firedRef.current = true;
-    const ctrl = new AbortController();
     setGenerating(true);
     (async () => {
       try {
@@ -48,7 +52,6 @@ export function VsVerdictLive({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ a, b }),
-          signal: ctrl.signal,
         });
         if (!res.ok) return;
         const data = (await res.json()) as {
@@ -65,12 +68,11 @@ export function VsVerdictLive({
         // Persist to SSR/OG on the next load.
         router.refresh();
       } catch {
-        /* aborted / offline — keep the template line */
+        /* offline / network — keep the template line */
       } finally {
         setGenerating(false);
       }
     })();
-    return () => ctrl.abort();
   }, [autoGenerate, a, b, locale, router]);
 
   return (
