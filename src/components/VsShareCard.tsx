@@ -89,6 +89,9 @@ export const VsShareCard = forwardRef<
   const avatarB = useAvatarData(b.avatarUrl);
   const styleA = tierStyle(a.tier);
   const styleB = tierStyle(b.tier);
+  // Keep the card's verdict short enough to fit without clamping.
+  const shownVerdict =
+    verdictLine.length > 100 ? `${verdictLine.slice(0, 100).trimEnd()}…` : verdictLine;
 
   return (
     <div
@@ -113,15 +116,17 @@ export const VsShareCard = forwardRef<
         <ShareSide side={b} data={avatarB} win={winner === "b"} />
       </div>
 
-      {/* Verdict */}
-      <div className="rounded-xl border border-orange-500/25 bg-orange-500/[0.08] p-4">
-        <p className="line-clamp-4 text-[0.95rem] leading-relaxed text-zinc-100">🔥 {verdictLine}</p>
+      {/* Verdict — truncate in JS (not line-clamp: `-webkit-box` renders empty
+          in html-to-image), clipped by a fixed-height overflow box as a backstop. */}
+      <div className="max-h-[150px] overflow-hidden rounded-xl border border-orange-500/25 bg-orange-500/[0.08] p-4">
+        <p className="text-[0.95rem] leading-relaxed text-zinc-100">🔥 {shownVerdict}</p>
       </div>
 
-      {/* Footer brand */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-zinc-500">{t("brand")}</span>
-        <span className="font-black text-orange-400">ghfind.com</span>
+      {/* Footer brand — nowrap so the export's wider CJK fallback font can't wrap
+          the last glyph onto a second line. */}
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <span className="truncate whitespace-nowrap text-zinc-500">{t("brand")}</span>
+        <span className="shrink-0 whitespace-nowrap font-black text-orange-400">ghfind.com</span>
       </div>
     </div>
   );
