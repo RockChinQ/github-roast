@@ -4,6 +4,7 @@ import { useLocale, useTranslations } from "next-intl";
 import { useRef, useState } from "react";
 import { SITE_URL } from "@/lib/site";
 import { VsShareCard, type VsSide } from "./VsShareCard";
+import { createShareCardBlob } from "./shareCardExport";
 import { ShareMenu } from "./ShareMenu";
 
 /**
@@ -41,8 +42,9 @@ export function VsShare({
 
   const genBlob = async (): Promise<Blob | null> => {
     if (!cardRef.current) return null;
-    const { toBlob } = await import("html-to-image");
-    return toBlob(cardRef.current, { pixelRatio: 2, cacheBust: true });
+    // Shared, stabilized export: waits for fonts + avatar decode + the
+    // data-share-card-ready flag before cloning (see shareCardExport).
+    return createShareCardBlob(cardRef.current);
   };
 
   const downloadBlob = (blob: Blob) => {

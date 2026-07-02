@@ -8,11 +8,13 @@ import { SUBSCORE_MAX } from "@/lib/score";
 import type { SubScores, Tier } from "@/lib/types";
 import { TierAvatarFrame } from "./TierAvatarFrame";
 
-/** Inline a cross-origin avatar as a data URL so the export canvas isn't tainted. */
-function useAvatarData(url: string | null): string | null {
+/** Inline a cross-origin avatar as a data URL so the export canvas isn't tainted.
+ *  Returns [dataUrl, ready] — `ready` gates the export (see createShareCardBlob). */
+function useAvatarData(url: string | null): [string | null, boolean] {
   const [data, setData] = useState<string | null>(null);
+  const [ready, setReady] = useState(!url);
   useEffect(() => {
-    if (!url) return;
+    if (!url) return; // no avatar → already ready (from the initializer)
     let alive = true;
     fetch(url)
       .then((r) => r.blob())
@@ -25,15 +27,19 @@ function useAvatarData(url: string | null): string | null {
             fr.readAsDataURL(b);
           }),
       )
-      .then((d) => alive && setData(d))
+      .then((d) => {
+        if (!alive) return;
+        setData(d);
+        setReady(true);
+      })
       .catch(() => {
-        /* CORS/network — fall back to initial-letter avatar */
+        if (alive) setReady(true);
       });
     return () => {
       alive = false;
     };
   }, [url]);
-  return data;
+  return [data, ready];
 }
 
 export interface VsSide {
@@ -99,8 +105,8 @@ export const VsShareCard = forwardRef<
   const tShare = useTranslations("shareCard");
   const tDim = useTranslations("dimensions");
   const tVs = useTranslations("vs");
-  const avatarA = useAvatarData(a.avatarUrl);
-  const avatarB = useAvatarData(b.avatarUrl);
+  const [avatarA, readyA] = useAvatarData(a.avatarUrl);
+  const [avatarB, readyB] = useAvatarData(b.avatarUrl);
   const styleA = tierStyle(a.tier);
   const styleB = tierStyle(b.tier);
   const gap = Math.abs(a.score - b.score);
@@ -116,6 +122,7 @@ export const VsShareCard = forwardRef<
     <div
       ref={ref}
       data-force-dark
+      data-share-card-ready={readyA && readyB ? "true" : "false"}
       style={{ width: 640 }}
       className="relative flex flex-col gap-5 overflow-hidden bg-[#0a0a0b] p-8 font-sans text-white"
     >
