@@ -1,5 +1,6 @@
 import { cache, Suspense } from "react";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import type { Metadata } from "next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -7,6 +8,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Link } from "@/i18n/navigation";
 import {
   getAccountDetail,
+  getFacetRank,
   getProfileComments,
   getProfileSnapshot,
   getRank,
@@ -32,7 +34,22 @@ import { normLang } from "@/lib/lang";
 import { ProfileReactionsSection } from "@/components/ProfileReactionsSection";
 import { RescanButton } from "@/components/RescanButton";
 import { ProfileBackfill } from "@/components/ProfileBackfill";
+import { BadgeReferralBanner } from "@/components/BadgeReferralBanner";
+import { ChallengeCta } from "@/components/ChallengeCta";
+import { FacetRankLink } from "@/components/FacetRankLink";
 import { auth, authConfigured } from "@/lib/auth";
+
+/** True when a Referer header points at github.com (or a subdomain). GitHub sends
+ *  `strict-origin-when-cross-origin`, so we only ever see the bare origin — enough
+ *  to host-match. Malformed values just fall through to false. */
+function isGithubReferer(referer: string | null): boolean {
+  if (!referer) return false;
+  try {
+    return /(^|\.)github\.com$/i.test(new URL(referer).hostname);
+  } catch {
+    return false;
+  }
+}
 
 // Profile comments must be fresh; score/roast data is still fetched from the DB
 // and remains cached at the persistence layer where applicable.
@@ -146,18 +163,33 @@ export default async function AccountPage({
   // zh-only roast). If the scan is still cached, stream a live roast in the
   // report slot instead of the "run a roast" empty state.
   const liveScan = !roast && !roastLine ? await getLiveScan(d.username) : null;
-  const [similar, comments, snap, rank, session, battles] = await Promise.all([
-    getSimilarAccounts(d.username, d.final_score, d.sub_scores),
-    getProfileComments(d.username),
-    getProfileSnapshot(d.username),
-    getRank(d.final_score),
-    authConfigured() ? auth() : Promise.resolve(null),
-    getUserMatchups(d.username),
-  ]);
+  const [similar, comments, snap, rank, session, battles, facetRank] =
+    await Promise.all([
+      getSimilarAccounts(d.username, d.final_score, d.sub_scores),
+      getProfileComments(d.username),
+      getProfileSnapshot(d.username),
+      getRank(d.final_score),
+      authConfigured() ? auth() : Promise.resolve(null),
+      getUserMatchups(d.username),
+      getFacetRank(d.username, d.final_score),
+    ]);
   // Inline re-detect is self-service: only the signed-in owner sees it on their
   // own profile. GitHub handles are case-insensitive, so compare normalized.
   const isOwner =
     session?.user?.login?.toLowerCase() === d.username.toLowerCase();
+  // Badge-landing hook: a visitor arriving from a GitHub README badge (Referer
+  // github.com) or an explicit ?ref=badge, looking at someone else's page, gets
+  // nudged into a PK against the owner. Reading headers is free here — the page
+  // is already force-dynamic. Suppressed for the owner (can't duel yourself).
+  const refParam = (await searchParams)?.ref;
+  const fromBadgeRef = refParam === "badge";
+  const fromGithub = isGithubReferer((await headers()).get("referer"));
+  const badgeSignal: "referer" | "ref" | null = fromBadgeRef
+    ? "ref"
+    : fromGithub
+      ? "referer"
+      : null;
+  const showBadgeBanner = badgeSignal !== null && !isOwner;
   // Milestone hint: points to the next tier line, plus the "beat %" so far.
   const promo = nextTier(d.final_score);
   const promoGap = promo ? (promo.threshold - d.final_score).toFixed(2) : null;
@@ -218,7 +250,10 @@ export default async function AccountPage({
             scannedAt: d.scanned_at,
           })}
         />
-        <Link href="/leaderboard" className="text-sm text-zinc-400 hover:text-zinc-200">
+        {showBadgeBanner && (
+          <BadgeReferralBanner owner={d.username} signal={badgeSignal!} />
+        )}
+        <Link href="/leaderboard" prefetch={false} className="text-sm text-zinc-400 hover:text-zinc-200">
           {t("back")}
         </Link>
 
@@ -338,6 +373,37 @@ export default async function AccountPage({
             ? t("milestoneNext", { tier: promoTierName!, gap: promoGap! })
             : t("milestoneCapped")}
         </div>
+        {facetRank && (
+          <FacetRankLink
+            facetValue={facetRank.facetValue}
+            rank={facetRank.rank}
+            ahead={facetRank.ahead?.username ?? null}
+          />
+        )}
+        {/* Turn the profile into a transit station: challenge this dev to a PK.
+            The owner instead seeds the home Omnibox to pull others in against
+            themselves (can't duel yourself). */}
+        {isOwner ? (
+          <Link
+            href={`/?username=${encodeURIComponent(`${d.username} vs `)}`}
+            className="mt-3 inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-orange-400/40 px-4 py-2 text-sm font-semibold text-orange-200 transition hover:bg-orange-500/10"
+          >
+            <span aria-hidden>⚔️</span>
+            {t("challengeOwner")}
+          </Link>
+        ) : (
+          <ChallengeCta
+            opponent={d.username}
+            source="profile_btn"
+            variant="banner"
+            label={t("challengeCta")}
+            goLabel={t("challengeGo")}
+            placeholder={t("challengePlaceholder")}
+            selfHint={t("challengeSelf")}
+            invalidHint={t("challengeInvalid")}
+            className="mt-3"
+          />
+        )}
         {isOwner && (
           <RescanButton username={d.username} scannedAt={d.scanned_at} className="mt-3" />
         )}

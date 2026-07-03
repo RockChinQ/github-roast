@@ -1,17 +1,25 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Link } from "@/i18n/navigation";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { DIMENSIONS } from "@/lib/dimensions";
 import { SITE_URL } from "@/lib/site";
 import { TIER_KEY, tierStyle } from "@/lib/tier";
+import { trackEvent } from "@/lib/track";
 import type { RoastLine, RoastMeta, SubScoreKey, SubScores } from "@/lib/types";
 import { CopyBadge } from "./CopyBadge";
 import { DimensionStarChart } from "./DimensionStarChart";
 import { ProfileShare } from "./ProfileShare";
 import { TierAvatarFrame } from "./TierAvatarFrame";
+
+interface FacetRankLite {
+  facetValue: string;
+  rank: number;
+}
 
 /**
  * Result popup shown once a *fresh* LLM roast finishes streaming on the profile
@@ -47,6 +55,20 @@ export function RoastResultModal({
   const tTier = useTranslations("tiers");
   const tDim = useTranslations("dimensions");
   const locale = useLocale();
+
+  // The just-persisted score lets us surface a language-board rank as an exit.
+  // Fetched lazily when the modal opens; the CTA stays hidden until it resolves
+  // to a real bucket.
+  const [facetRank, setFacetRank] = useState<FacetRankLite | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const ctrl = new AbortController();
+    fetch(`/api/facet-rank/${encodeURIComponent(username)}`, { signal: ctrl.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setFacetRank(data?.facetRank ?? null))
+      .catch(() => {});
+    return () => ctrl.abort();
+  }, [open, username]);
 
   const style = tierStyle(meta.tier);
   const tierKey = TIER_KEY[meta.tier];
@@ -158,6 +180,35 @@ export function RoastResultModal({
             tags={meta.tags ?? { zh: [], en: [] }}
           />
           <CopyBadge baseUrl={SITE_URL} username={username} version={meta.final_score} />
+        </div>
+
+        {/* Emotional-peak exits: keep the just-roasted user moving instead of
+            bouncing. Pull someone into a PK (seeds the home Omnibox with their
+            own handle as side A), or jump to their language board. */}
+        <div className="flex flex-col gap-2">
+          <Link
+            href={`/?username=${encodeURIComponent(`${username} vs `)}`}
+            onClick={() => trackEvent("modal_cta_click", { cta: "pk" })}
+            className="flex w-full items-center justify-center gap-1.5 rounded-full bg-orange-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-500"
+          >
+            <span aria-hidden>⚔️</span>
+            {t("modalPkCta")}
+          </Link>
+          {facetRank && (
+            <Link
+              href={`/developers/language/${encodeURIComponent(facetRank.facetValue)}`}
+              prefetch={false}
+              onClick={() =>
+                trackEvent("modal_cta_click", {
+                  cta: "facet_rank",
+                  facet: facetRank.facetValue,
+                })
+              }
+              className="flex w-full items-center justify-center gap-1.5 rounded-full border border-orange-400/40 px-4 py-2 text-sm font-semibold text-orange-200 transition hover:bg-orange-500/10"
+            >
+              {t("modalFacetRankCta", { facet: facetRank.facetValue })}
+            </Link>
+          )}
         </div>
 
         <button
