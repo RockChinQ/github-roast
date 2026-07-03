@@ -21,7 +21,7 @@ We ask three questions:
 
 To address them, we score 18,947 public accounts with a deterministic rubric ([ghfind](https://ghfind.com)), whose scoring core is open source under AGPL ([repository](https://github.com/hikariming/ghfind)), and analyze a deep sample of 3,444 accounts for which we retain complete raw-metric snapshots, including PR-level samples, repository quality features, and activity-shape statistics. All aggregate data underlying the figures are published alongside this article ([data.json](/blog/we-scored-19000-github-accounts/data.json)).
 
-Our headline findings: fabrication is substantially rarer in this sample than public discourse suggests; it is extreme rather than subtle when present; and it is nearly linearly separable from honest activity using pattern-level features alone.
+In summary, fabrication is substantially rarer in this sample than public discourse suggests; when present, it is extreme rather than subtle; and it can be separated from ordinary activity by simple pattern-level thresholds alone.
 
 ## 2. Data and Methodology
 
