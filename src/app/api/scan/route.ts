@@ -51,14 +51,16 @@ async function recordSuccessfulLookup(username: string, ip: string): Promise<voi
 export async function POST(req: NextRequest) {
   const idem = idempotencyHeaders(req);
 
-  let body: { username?: string; turnstileToken?: string };
+  // Fields stay `unknown`: scripted clients send numbers/objects here, and the
+  // validators must answer with a 400 rather than crash on a type assumption.
+  let body: { username?: unknown; turnstileToken?: unknown };
   try {
     body = await req.json();
   } catch {
     return apiError("invalid_body", { status: 400, headers: idem });
   }
 
-  const username = normalizeUsername(body.username ?? "");
+  const username = normalizeUsername(body.username);
   if (!username) {
     return apiError("invalid_username", { status: 400, headers: idem });
   }
@@ -72,10 +74,21 @@ export async function POST(req: NextRequest) {
     return apiError("unauthorized", { status: 401, headers: idem });
   }
   if (auth === "absent") {
-    const human = await verifyTurnstile(body.turnstileToken ?? null, ip);
+    const token = typeof body.turnstileToken === "string" ? body.turnstileToken : null;
+    const human = await verifyTurnstile(token, ip);
     if (!human) {
       return apiError("turnstile_failed", { status: 403, headers: idem });
     }
+  }
+
+  // Rate-limit BEFORE the cache lookup. The cached path used to skip the
+  // limiter as "cheap", but it still recorded a lookup per request — a bot
+  // burst replaying cached usernames bypassed the limiter entirely and
+  // exhausted Turso's connection pool (2026-07 incident).
+  const limit = await checkRateLimit(ip);
+  const rlHeaders = rateLimitHeaders(limit);
+  if (!limit.success) {
+    return apiError("rate_limited", { status: 429, headers: { ...idem, ...rlHeaders } });
   }
 
   // Cache hit short-circuits both GitHub and (later) the LLM. The leaderboard
@@ -84,13 +97,10 @@ export async function POST(req: NextRequest) {
   const cached = await getCachedScan(username);
   if (cached) {
     await recordSuccessfulLookup(cached.metrics.username, ip);
-    return NextResponse.json({ ...cached, cached: true }, { headers: idem });
-  }
-
-  const limit = await checkRateLimit(ip);
-  const rlHeaders = rateLimitHeaders(limit);
-  if (!limit.success) {
-    return apiError("rate_limited", { status: 429, headers: { ...idem, ...rlHeaders } });
+    return NextResponse.json(
+      { ...cached, cached: true },
+      { headers: { ...idem, ...rlHeaders } },
+    );
   }
 
   try {
