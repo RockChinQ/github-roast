@@ -35,6 +35,7 @@ import { ProfileReactionsSection } from "@/components/ProfileReactionsSection";
 import { RescanButton } from "@/components/RescanButton";
 import { ProfileBackfill } from "@/components/ProfileBackfill";
 import { BadgeReferralBanner } from "@/components/BadgeReferralBanner";
+import { ProfileLandingBeacon } from "@/components/ProfileLandingBeacon";
 import { ChallengeCta } from "@/components/ChallengeCta";
 import { FacetRankLink } from "@/components/FacetRankLink";
 import { auth, authConfigured } from "@/lib/auth";
@@ -49,6 +50,39 @@ function isGithubReferer(referer: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+const SITE_HOST = (() => {
+  try {
+    return new URL(SITE_URL).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+})();
+
+/** Coarse acquisition bucket for the profile-landing beacon — kept low-cardinality
+ *  so the Analytics group stays readable. `?ref=badge` wins (explicit badge tag),
+ *  then the Referer host decides. Mirrors the referrerHostname families we already
+ *  see in Web Analytics (github / search / social) plus internal vs. direct. */
+function classifyLandingSource(referer: string | null, fromBadge: boolean): string {
+  if (fromBadge) return "badge";
+  if (!referer) return "direct";
+  let host: string;
+  try {
+    host = new URL(referer).hostname.toLowerCase();
+  } catch {
+    return "direct";
+  }
+  if (host === SITE_HOST || host === "localhost") return "internal";
+  if (/(^|\.)github\.com$/.test(host)) return "github";
+  if (/(^|\.)(google|bing|duckduckgo|baidu|yandex|ecosia|sogou)\./.test(host)) return "search";
+  if (
+    /(^|\.)(t\.co|x\.com|twitter\.com|facebook\.com|linkedin\.com|weibo\.com|reddit\.com|t\.me|linux\.do|news\.ycombinator\.com|instagram\.com)$/.test(
+      host,
+    )
+  )
+    return "social";
+  return "referral";
 }
 
 // Profile comments must be fresh; score/roast data is still fetched from the DB
@@ -183,13 +217,17 @@ export default async function AccountPage({
   // is already force-dynamic. Suppressed for the owner (can't duel yourself).
   const refParam = (await searchParams)?.ref;
   const fromBadgeRef = refParam === "badge";
-  const fromGithub = isGithubReferer((await headers()).get("referer"));
+  const referer = (await headers()).get("referer");
+  const fromGithub = isGithubReferer(referer);
   const badgeSignal: "referer" | "ref" | null = fromBadgeRef
     ? "ref"
     : fromGithub
       ? "referer"
       : null;
   const showBadgeBanner = badgeSignal !== null && !isOwner;
+  // Funnel top: attribute this profile view to a coarse acquisition source so the
+  // landing → PK/badge action → spread loop can be read end-to-end.
+  const landingSource = classifyLandingSource(referer, fromBadgeRef);
   // Milestone hint: points to the next tier line, plus the "beat %" so far.
   const promo = nextTier(d.final_score);
   const promoGap = promo ? (promo.threshold - d.final_score).toFixed(2) : null;
@@ -250,6 +288,7 @@ export default async function AccountPage({
             scannedAt: d.scanned_at,
           })}
         />
+        <ProfileLandingBeacon source={landingSource} tier={d.tier} owner={isOwner} />
         <Link href="/leaderboard" prefetch={false} className="text-sm text-zinc-400 hover:text-zinc-200">
           {t("back")}
         </Link>
@@ -432,7 +471,7 @@ export default async function AccountPage({
           beat={beat}
           tags={d.tags}
         />
-        <CopyBadge baseUrl={SITE_URL} username={d.username} version={d.scanned_at} />
+        <CopyBadge baseUrl={SITE_URL} username={d.username} version={d.scanned_at} surface="profile" />
         </aside>
 
         {/* Right: evidence + report */}

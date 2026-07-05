@@ -20,7 +20,14 @@ export type TrackEvent =
   | "leaderboard_vs_click"
   | "facet_rank_click"
   | "facet_board_vs_click"
-  | "modal_cta_click";
+  | "modal_cta_click"
+  // Funnel top/bottom — added to make the /u landing → action → spread loop
+  // measurable end-to-end (previously only the mid-funnel clicks were tracked).
+  | "profile_landing" // /u profile viewed, with a coarse `source` bucket
+  | "scan_start" // a roast was submitted from the home scanner
+  | "scan_complete" // /api/scan returned a score (pre-roast)
+  | "badge_copy" // a README badge/card snippet was copied
+  | "share_click"; // a share channel was picked (platform / copy / native / image)
 
 type VaWindow = Window & {
   va?: (...params: unknown[]) => void;

@@ -28,6 +28,7 @@ import { Turnstile, turnstileEnabled } from "./Turnstile";
 import { Omnibox } from "./Omnibox";
 import { DimensionStarChart } from "./DimensionStarChart";
 import { SITE_URL } from "@/lib/site";
+import { trackEvent } from "@/lib/track";
 
 interface Display {
   score: number;
@@ -181,6 +182,9 @@ export function Roaster() {
       setMetaRoast(null);
       setThinking("");
       setScanning(true);
+      // Funnel top: the user committed to a roast. `source` lets us split the
+      // home scanner from other entry points if they get instrumented later.
+      trackEvent("scan_start", { source: "home" });
       try {
         const res = await fetch("/api/scan", {
           method: "POST",
@@ -197,6 +201,9 @@ export function Roaster() {
         const byoKey = loadByoKey();
         const forceProfileHandoff =
           process.env.NODE_ENV !== "production" && searchParams.get("profile") === "1";
+        // Scan succeeded (score in hand, before the LLM roast streams). Tier is a
+        // low-cardinality dimension — safe to slice the funnel by outcome.
+        trackEvent("scan_complete", { source: "home", tier: result.scoring.tier });
         // Hand off to the profile page: stash the fresh scan so the inner page
         // can render its evidence and stream the roast in place (drives internal
         // traffic; the user reads their repos/score while the LLM works). Passing
@@ -271,6 +278,7 @@ export function Roaster() {
     try {
       await navigator.clipboard.writeText(md);
       setEmbedCopied(true);
+      trackEvent("badge_copy", { kind: "card_embed", surface: "result" });
       setTimeout(() => setEmbedCopied(false), 2000);
     } catch {
       /* clipboard blocked */
@@ -517,6 +525,7 @@ export function Roaster() {
                 baseUrl={SITE_URL}
                 username={scan.metrics.username}
                 version={display.score}
+                surface="result"
               />
             </div>
           )}

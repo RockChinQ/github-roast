@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useState, useSyncExternalStore } from "react";
 import { Camera, Clipboard, Share2 } from "lucide-react";
+import { trackEvent } from "@/lib/track";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,7 +51,8 @@ export function ShareMenu({
   const u = encodeURIComponent(link);
   const t = encodeURIComponent(text);
 
-  const openIntent = (href: string) => {
+  const openIntent = (href: string, channel: string) => {
+    trackEvent("share_click", { channel });
     window.open(href, "_blank", "noopener,noreferrer,width=600,height=540");
     setOpen(false);
   };
@@ -59,6 +61,7 @@ export function ShareMenu({
     try {
       await navigator.clipboard.writeText(`${text} ${link}`);
       setCopied(true);
+      trackEvent("share_click", { channel: "copy_link" });
       setTimeout(() => setCopied(false), 2000);
     } catch {
       /* clipboard blocked */
@@ -66,6 +69,7 @@ export function ShareMenu({
   };
 
   const nativeShare = async () => {
+    trackEvent("share_click", { channel: "native" });
     try {
       await navigator.share({ title: T("siteName"), text, url: link });
     } catch {
@@ -99,7 +103,7 @@ export function ShareMenu({
               size="sm"
               className="h-auto border-white/10 px-2 py-2 text-xs hover:bg-white/10"
               style={{ color: p.color }}
-              onClick={() => openIntent(p.href(u, t))}
+              onClick={() => openIntent(p.href(u, t), p.key)}
             >
               {p.label}
             </Button>
@@ -111,6 +115,7 @@ export function ShareMenu({
           className="rounded-lg border border-orange-400/30 bg-orange-500/10 px-3 py-2 text-xs font-medium text-orange-200 focus:bg-orange-500/20 focus:text-orange-100"
           onSelect={(event) => {
             event.preventDefault();
+            trackEvent("share_click", { channel: "image" });
             onShareImage();
             setOpen(false);
           }}

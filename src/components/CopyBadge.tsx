@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useState, useSyncExternalStore } from "react";
+import { trackEvent } from "@/lib/track";
 
 // Stable no-op subscribe: the origin never changes after load, so we only need
 // the server/client snapshot split (null on SSR, real origin once hydrated).
@@ -107,9 +108,13 @@ export function CopyBadge({
   baseUrl,
   username,
   version,
+  surface = "unknown",
 }: {
   baseUrl: string;
   username: string;
+  /** Where this builder is mounted (e.g. "result", "profile") — attributes badge
+   *  copies to the self-share vs. the on-landing viral loop in the funnel. */
+  surface?: string;
   /**
    * Cache-buster for the on-page previews. The card/badge images are served with
    * a long CDN cache (README/camo views stay cheap), so without this the preview
@@ -176,6 +181,8 @@ export function CopyBadge({
     try {
       await navigator.clipboard.writeText(text);
       setCopied(key);
+      // `key` (badge-md / builder-html / …) is the snippet variant; low cardinality.
+      trackEvent("badge_copy", { kind: key, surface });
       setTimeout(() => setCopied((c) => (c === key ? null : c)), 2000);
     } catch {
       /* clipboard blocked */
